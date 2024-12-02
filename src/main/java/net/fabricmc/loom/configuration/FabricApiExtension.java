@@ -44,12 +44,10 @@ import org.gradle.api.artifacts.Dependency;
 import org.gradle.api.file.RegularFileProperty;
 import org.gradle.api.plugins.JavaPlugin;
 import org.gradle.api.provider.Property;
-import org.gradle.api.tasks.Delete;
 import org.gradle.api.tasks.SourceSet;
 import org.gradle.api.tasks.SourceSetContainer;
 import org.gradle.api.tasks.TaskContainer;
 import org.gradle.jvm.tasks.Jar;
-import org.gradle.language.base.plugins.LifecycleBasePlugin;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 import org.w3c.dom.NodeList;
@@ -135,31 +133,18 @@ public abstract class FabricApiExtension {
 			jar.exclude(".cache/**");
 		});
 
-		taskContainer.getByName(LifecycleBasePlugin.CLEAN_TASK_NAME, task -> {
-			Delete clean = (Delete) task;
-			clean.delete(outputDirectory);
-		});
-
 		if (settings.getCreateSourceSet().get()) {
 			final boolean isClientAndSplit = extension.areEnvironmentSourceSetsSplit() && settings.getClient().get();
-			final SourceSet targetSourceSet = isClientAndSplit ? SourceSetHelper.getSourceSetByName(MinecraftSourceSets.Split.CLIENT_ONLY_SOURCE_SET_NAME, getProject()) : mainSourceSet;
 
 			SourceSetContainer sourceSets = SourceSetHelper.getSourceSets(getProject());
 
 			// Create the new datagen sourceset, depend on the main or client sourceset.
 			SourceSet dataGenSourceSet = sourceSets.create(DATAGEN_SOURCESET_NAME, sourceSet -> {
-				sourceSet.setCompileClasspath(
-							sourceSet.getCompileClasspath()
-								.plus(targetSourceSet.getOutput())
-				);
+				dependsOn(sourceSet, mainSourceSet);
 
-				sourceSet.setRuntimeClasspath(
-							sourceSet.getRuntimeClasspath()
-									.plus(targetSourceSet.getOutput())
-				);
-
-				extendsFrom(getProject(), sourceSet.getCompileClasspathConfigurationName(), targetSourceSet.getCompileClasspathConfigurationName());
-				extendsFrom(getProject(), sourceSet.getRuntimeClasspathConfigurationName(), targetSourceSet.getRuntimeClasspathConfigurationName());
+				if (isClientAndSplit) {
+					dependsOn(sourceSet, SourceSetHelper.getSourceSetByName(MinecraftSourceSets.Split.CLIENT_ONLY_SOURCE_SET_NAME, getProject()));
+				}
 			});
 
 			settings.getModId().convention(getProject().provider(() -> {
@@ -340,5 +325,20 @@ public abstract class FabricApiExtension {
 		configurations.named(name, configuration -> {
 			configuration.extendsFrom(configurations.getByName(extendsFrom));
 		});
+	}
+
+	private void dependsOn(SourceSet sourceSet, SourceSet other) {
+		sourceSet.setCompileClasspath(
+				sourceSet.getCompileClasspath()
+						.plus(other.getOutput())
+		);
+
+		sourceSet.setRuntimeClasspath(
+				sourceSet.getRuntimeClasspath()
+						.plus(other.getOutput())
+		);
+
+		extendsFrom(getProject(), sourceSet.getCompileClasspathConfigurationName(), other.getCompileClasspathConfigurationName());
+		extendsFrom(getProject(), sourceSet.getRuntimeClasspathConfigurationName(), other.getRuntimeClasspathConfigurationName());
 	}
 }
